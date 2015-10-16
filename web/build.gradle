@@ -1,0 +1,133 @@
+  buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.moowork.gradle:gradle-node-plugin:0.10"
+        classpath 'com.github.kulya:jmeter-gradle-plugin:1.3.2-2.6'
+    }
+  }
+
+  plugins {
+    id "com.moowork.node" version "0.10"
+  }
+
+  task wrapper(type: Wrapper) {
+    gradleVersion = '2.6'
+  }
+
+  // Applying nodejs plugins
+  apply plugin: 'com.moowork.node'
+
+  apply plugin:'jmeter'
+  def performanceTestReportDir = file("$buildDir/reports/tests")
+  jmeterRun.configure {
+
+    jmeterTestFiles = [ file("$rootDir/web/src/test-performance/resources/com/wipro/test/performanceTestPlan.jmx")]
+    jmeterPropertyFile = file("$rootDir/web/src/test-performance/resources/com/wipro/test/jmeter.properties")
+    jmeterUserProperties = ["host="+config.server.hostname,"port="+config.server.port]
+    reportDir  = performanceTestReportDir
+    
+  }
+
+  project(':web') {
+    apply plugin: 'java'
+    apply plugin: 'com.bmuschko.cargo'
+
+     repositories { 
+		mavenCentral()
+	}
+	dependencies{
+			compile 'org.seleniumhq.selenium:selenium-java:2.46.0'
+			compile 'org.testng:testng:6.8'
+	}
+	
+    sourceSets {
+		integrationTest {
+		  java.srcDir file("src/test-integration/java")
+		  resources.srcDir file("src/test-integration/resources")
+		  compileClasspath = sourceSets.main.output + configurations.testRuntime
+		  runtimeClasspath = output + compileClasspath
+		}
+		performanceTest {
+		  java.srcDir file("src/test-performance/java")
+		  resources.srcDir file("src/test-performance/resources")
+		  compileClasspath = sourceSets.main.output + configurations.testRuntime
+		  runtimeClasspath = output + compileClasspath
+		}
+		functionalTest {
+		  java.srcDir file("src/test-functional/java")
+		  resources.srcDir file("src/test-functional/resources")
+		  compileClasspath = sourceSets.main.output + configurations.testRuntime
+		  runtimeClasspath = output + compileClasspath
+		}
+	}
+
+	task integrationTest(type: Test) {
+		description = 'Runs the integration tests.'
+		group = 'verification'
+		testClassesDir = sourceSets.integrationTest.output.classesDir
+		classpath = sourceSets.integrationTest.runtimeClasspath
+	}
+
+	task performanceTest(type: Test , dependsOn: jmeterRun ) {
+		description = 'Runs the performance tests.'
+		group = 'verification'
+		testClassesDir = sourceSets.performanceTest.output.classesDir
+		classpath = sourceSets.performanceTest.runtimeClasspath
+	}
+
+	task functionalTest(type: Test) {
+		testClassesDir = sourceSets.functionalTest.output.classesDir
+		classpath = sourceSets.functionalTest.runtimeClasspath
+		systemProperty 'url', "$config.server.hostname:$config.server.port"
+		useTestNG(){
+			suites 'src/test-functional/resources/testing.xml'
+		}
+	}
+
+	node {
+		// Version of node to use.
+		version = '0.12.7'
+
+		// Version of npm to use.
+		npmVersion = '2.11.3'
+
+		// Base URL for fetching node distributions (change if you have a mirror).
+		distBaseUrl = 'https://nodejs.org/dist'
+
+		// If true, it will download node using above parameters.
+		// If false, it will try to use globally installed node.
+		download = true
+
+		// Set the work directory for unpacking node
+		workDir = file("${project.buildDir}/nodejs")
+
+		// Set the work directory where node_modules should be located
+		nodeModulesDir = file("${project.projectDir}")
+	}
+
+	task installExpress(type: NpmTask) {
+		// install the express package only
+		args = ['install', 'express']
+	}
+
+	task installejs(type: NpmTask, dependsOn: installExpress) {
+		// install the ejs package only
+		args = ['install','ejs']
+	}
+
+	task installBodyParser(type: NpmTask, dependsOn: installejs) {
+		// install the body-parser package only
+		args = ['install', 'body-parser']
+	} 
+
+	task runNode(type: NodeTask, dependsOn: installBodyParser) {
+		script = file('src/main/webapp/assets/js/app.js')
+		args = [config.server.port]
+	}
+
+	cargo {
+		port = config.server.port
+	}
+}

@@ -1,0 +1,27 @@
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.6'
+}
+
+//Read the environment specific configuration 
+def env = project.hasProperty('env') ? project.getProperty('env') : 'test'
+def configFile = file("$rootDir/gradle/config/envConfig.groovy")
+def parsedConfig = new ConfigSlurper(env).parse(configFile.toURL())
+
+//Assign the properties object to the global config object
+ext.config = parsedConfig
+
+buildscript {
+    repositories {
+     mavenCentral()
+    }
+    dependencies {
+        classpath 'com.bmuschko:gradle-cargo-plugin:2.1.1'
+    }
+}
+
+gradle.projectsEvaluated {
+    apply plugin: 'com.bmuschko.cargo'
+    cargo {
+        port = config.server.port.toInteger()   
+    }
+}
